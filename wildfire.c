@@ -14,7 +14,7 @@
 /*
  * As a note, this portion of the codebase would not be possible without 
  * the amazing contribution of Jamie Geiger on the watershell project.
- * To see that project go to https://github.com/wumb0/watershell .
+ * To see that project go to https://github.com/wumb0/watershell.
  *
 **/
 char *get_udp_packet_and_run_cmd(){
@@ -88,6 +88,8 @@ char *get_udp_packet_and_run_cmd(){
     return comout;
 }
 
+
+// alot of the following code comes from https://github.com/kttkyk/dns
 uint16_t checksum(uint8_t *data, unsigned int size){
     int i;
     int sum = 0;
