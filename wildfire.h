@@ -45,10 +45,11 @@ public:
   static Wildfire *Init(std::string dst_ip, int dst_port);
   static Wildfire *Init(std::string dst_ip, int dst_port, bool DEBUG);
   static Wildfire *Init(std::string dst_ip, int dst_port, bool DEBUG, bool PROMISC);
-  static std::string GetHostname(void);
+  void OpenSocket();
+  void CloseSocket();
   void Register(void);
   std::string ListenOnce(void);
-  void SendChunk(std::string payload);
+  void Send(std::string payload);
   static void End(void);
 
 
@@ -63,11 +64,13 @@ private:
   uint16_t dst_port, src_port;
 
   Wildfire(std::string dst_ip, int port, bool DEBUG, bool PROMISC);
+  void SendChunk(std::string payload);
   void SetInterfaceMac();
   void SetGatewayMAC(void);
   void GetMacFromIP(char *ip_addr);
   void GetInterfaceName(char iface[]);
   void Sigint(int signum);
+  static std::string GetHostname(void);
   static void StaticSignalHandler(int signum){
         Wildfire::End();
   }

